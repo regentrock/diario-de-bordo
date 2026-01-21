@@ -10,11 +10,16 @@ const statusText = document.getElementById('statusText');
 const statusDot = document.getElementById('statusDot');
 const installModal = document.getElementById('installModal');
 const installInstructions = document.getElementById('installInstructions');
+const githubInfo = document.getElementById('githubInfo');
 
 // Variáveis globais
 let entries = [];
 let deferredPrompt = null;
 let isOnline = navigator.onLine;
+
+// Configuração para GitHub Pages
+const IS_GITHUB_PAGES = window.location.hostname.includes('github.io');
+const REPO_NAME = IS_GITHUB_PAGES ? window.location.pathname.split('/')[1] : '';
 
 // Inicialização
 document.addEventListener('DOMContentLoaded', () => {
@@ -23,7 +28,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Inicializar aplicação
 function initApp() {
-    console.log('Inicializando Diário de Bordo PWA');
+    console.log('🚀 Inicializando Diário de Bordo PWA');
+    console.log('📱 Dispositivo:', getDeviceType());
+    console.log('🌐 GitHub Pages:', IS_GITHUB_PAGES);
+    console.log('📂 Repositório:', REPO_NAME || 'Local');
+    
+    // Mostrar info do GitHub Pages se aplicável
+    if (IS_GITHUB_PAGES && REPO_NAME) {
+        githubInfo.textContent = `GitHub Pages: ${REPO_NAME}`;
+        githubInfo.style.fontSize = '0.8em';
+        githubInfo.style.marginTop = '5px';
+        githubInfo.style.color = '#666';
+    }
     
     // Carregar entradas salvas
     loadEntries();
@@ -47,14 +63,11 @@ function initApp() {
     // Atualizar contador de entradas
     updateEntriesCounter();
     
-    // Verificar se já está instalado
-    if (isAppInstalled()) {
-        console.log('App já está instalado');
-        installButton.style.display = 'none';
-    }
-    
     // Configurar modal
     setupModal();
+    
+    // Inicializar instalação PWA
+    initPWA();
 }
 
 // Configurar listeners de eventos
@@ -79,14 +92,19 @@ function setupEventListeners() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     installButton.addEventListener('click', installPWA);
     
-    // Forçar atualização do service worker quando a página ganhar foco
+    // Atualizar Service Worker quando a página ganhar foco
     window.addEventListener('focus', () => {
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistration().then(reg => {
-                if (reg) {
-                    reg.update();
-                }
-            });
+            navigator.serviceWorker.getRegistration()
+                .then(reg => reg && reg.update())
+                .catch(console.error);
+        }
+    });
+    
+    // Lidar com mudanças na visibilidade da página
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            loadEntries(); // Recarregar dados quando a página ficar visível
         }
     });
 }
@@ -105,19 +123,59 @@ function setupModal() {
             installModal.style.display = 'none';
         }
     });
+    
+    // Fechar modal com ESC
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && installModal.style.display === 'flex') {
+            installModal.style.display = 'none';
+        }
+    });
+}
+
+// Inicializar PWA
+function initPWA() {
+    // Verificar se já está instalado
+    if (isAppInstalled()) {
+        console.log('📱 App já está instalado como PWA');
+        installButton.style.display = 'none';
+        
+        // Mostrar notificação se for a primeira visita após instalação
+        const firstRun = localStorage.getItem('pwaFirstRun');
+        if (!firstRun) {
+            setTimeout(() => {
+                showNotification('✅ Diário de Bordo instalado com sucesso!', 'success');
+                localStorage.setItem('pwaFirstRun', 'true');
+            }, 1000);
+        }
+    } else {
+        // Verificar se podemos mostrar o botão de instalação
+        checkInstallability();
+    }
+}
+
+// Verificar se o app pode ser instalado
+function checkInstallability() {
+    // No iOS, o beforeinstallprompt não é suportado
+    // Mostramos o botão sempre para instruções manuais
+    if (isiOS() || isAndroid()) {
+        installButton.style.display = 'block';
+        installButton.textContent = '📱 Como Instalar';
+    }
 }
 
 // Carregar entradas do localStorage
 function loadEntries() {
-    const savedEntries = localStorage.getItem('diarioEntries');
-    if (savedEntries) {
-        try {
+    try {
+        const savedEntries = localStorage.getItem('diarioEntries');
+        if (savedEntries) {
             entries = JSON.parse(savedEntries);
+            console.log(`📝 Carregadas ${entries.length} entradas`);
             renderEntries();
-        } catch (error) {
-            console.error('Erro ao carregar entradas:', error);
-            entries = [];
         }
+    } catch (error) {
+        console.error('❌ Erro ao carregar entradas:', error);
+        entries = [];
+        showNotification('Erro ao carregar dados salvos', 'error');
     }
 }
 
@@ -126,9 +184,10 @@ function saveEntries() {
     try {
         localStorage.setItem('diarioEntries', JSON.stringify(entries));
         updateEntriesCounter();
+        console.log('💾 Entradas salvas:', entries.length);
     } catch (error) {
-        console.error('Erro ao salvar entradas:', error);
-        showNotification('Erro ao salvar entrada. Tente novamente.', 'error');
+        console.error('❌ Erro ao salvar entradas:', error);
+        showNotification('Erro ao salvar. Espaço de armazenamento pode estar cheio.', 'error');
     }
 }
 
@@ -136,27 +195,30 @@ function saveEntries() {
 function renderEntries(filteredEntries = null) {
     const entriesToRender = filteredEntries || entries;
     
-    // Verificar se há entradas para mostrar
     if (entriesToRender.length === 0) {
         entriesList.innerHTML = '';
         emptyState.style.display = 'block';
         return;
     }
     
-    // Esconder estado vazio
     emptyState.style.display = 'none';
     
-    // Ordenar entradas por data (mais recentes primeiro)
-    const sortedEntries = [...entriesToRender].sort((a, b) => {
-        return new Date(b.date) - new Date(a.date);
-    });
+    // Ordenar por data (mais recente primeiro)
+    const sortedEntries = [...entriesToRender].sort((a, b) => 
+        new Date(b.date + 'T' + (b.createdAt?.split('T')[1] || '00:00:00')) - 
+        new Date(a.date + 'T' + (a.createdAt?.split('T')[1] || '00:00:00'))
+    );
     
-    // Gerar HTML das entradas
     let entriesHTML = '';
     
     sortedEntries.forEach((entry) => {
         const date = new Date(entry.date);
-        const formattedDate = date.toLocaleDateString('pt-BR');
+        const formattedDate = date.toLocaleDateString('pt-BR', {
+            weekday: 'short',
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        });
         
         entriesHTML += `
             <div class="entry-card" data-id="${entry.id}">
@@ -167,7 +229,7 @@ function renderEntries(filteredEntries = null) {
                 <p class="entry-description">${entry.description}</p>
                 <div class="entry-actions">
                     <button class="btn btn-danger" onclick="deleteEntry('${entry.id}')">
-                        Excluir
+                        🗑️ Excluir
                     </button>
                 </div>
             </div>
@@ -181,67 +243,45 @@ function renderEntries(filteredEntries = null) {
 function handleFormSubmit(e) {
     e.preventDefault();
     
-    // Obter valores do formulário
     const title = document.getElementById('title').value.trim();
     const description = document.getElementById('description').value.trim();
     const date = document.getElementById('date').value;
     
-    // Validar dados
     if (!title || !description || !date) {
-        showNotification('Por favor, preencha todos os campos!', 'error');
+        showNotification('⚠️ Preencha todos os campos!', 'error');
         return;
     }
     
-    // Criar nova entrada
     const newEntry = {
-        id: generateId(),
+        id: Date.now().toString(36) + Math.random().toString(36).substr(2),
         title,
         description,
         date,
         createdAt: new Date().toISOString()
     };
     
-    // Adicionar à lista e salvar
     entries.unshift(newEntry);
     saveEntries();
     renderEntries();
     
     // Limpar formulário
-    entryForm.reset();
+    document.getElementById('title').value = '';
+    document.getElementById('description').value = '';
+    document.getElementById('date').value = new Date().toISOString().split('T')[0];
     
-    // Definir data atual como padrão
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('date').value = today;
+    showNotification('✅ Entrada adicionada!');
     
-    // Mostrar notificação
-    showNotification('Entrada adicionada com sucesso!');
-    
-    // Rolar para a nova entrada
-    setTimeout(() => {
-        const newEntryElement = document.querySelector(`[data-id="${newEntry.id}"]`);
-        if (newEntryElement) {
-            newEntryElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
-    }, 100);
-}
-
-// Gerar ID único
-function generateId() {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2);
+    // Focar no título para próxima entrada
+    setTimeout(() => document.getElementById('title').focus(), 100);
 }
 
 // Excluir entrada
 function deleteEntry(id) {
     if (confirm('Tem certeza que deseja excluir esta entrada?')) {
-        // Filtrar entrada a ser removida
         entries = entries.filter(entry => entry.id !== id);
-        
-        // Salvar e renderizar
         saveEntries();
         renderEntries();
-        
-        // Mostrar notificação
-        showNotification('Entrada excluída com sucesso!');
+        showNotification('🗑️ Entrada excluída');
     }
 }
 
@@ -254,41 +294,38 @@ function handleFilterDate() {
         return;
     }
     
-    const filteredEntries = entries.filter(entry => {
-        return entry.date === filterValue;
-    });
-    
+    const filteredEntries = entries.filter(entry => entry.date === filterValue);
     renderEntries(filteredEntries);
 }
 
 // Atualizar contador de entradas
 function updateEntriesCounter() {
     totalEntries.textContent = entries.length;
+    document.title = entries.length > 0 ? 
+        `(${entries.length}) Diário de Bordo` : 
+        'Diário de Bordo';
 }
 
 // Mostrar notificação
 function showNotification(message, type = 'success') {
-    // Criar elemento de notificação
+    // Remove notificação anterior se existir
+    const existing = document.querySelector('.notification');
+    if (existing) existing.remove();
+    
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
     notification.textContent = message;
+    notification.style.animation = 'slideIn 0.3s ease-out';
     
-    // Adicionar ao corpo
     document.body.appendChild(notification);
     
-    // Mostrar notificação
-    setTimeout(() => {
-        notification.classList.add('show');
-    }, 10);
+    // Animação de entrada
+    setTimeout(() => notification.classList.add('show'), 10);
     
-    // Remover após 3 segundos
+    // Auto-remover após 3 segundos
     setTimeout(() => {
         notification.classList.remove('show');
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.parentNode.removeChild(notification);
-            }
-        }, 500);
+        setTimeout(() => notification.remove(), 500);
     }, 3000);
 }
 
@@ -297,304 +334,254 @@ function updateConnectionStatus() {
     isOnline = navigator.onLine;
     
     if (isOnline) {
-        statusText.textContent = 'Online';
+        statusText.textContent = '🌐 Online';
         statusDot.className = 'status-dot online';
     } else {
-        statusText.textContent = 'Offline';
+        statusText.textContent = '📴 Offline';
         statusDot.className = 'status-dot offline';
-        showNotification('Você está offline. As entradas serão salvas localmente.', 'info');
+        showNotification('📶 Modo offline ativado. Dados salvos localmente.', 'info');
     }
 }
 
 // Registrar Service Worker
 function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            // Registrar service worker
-            navigator.serviceWorker.register('./service-worker.js')
-                .then(registration => {
-                    console.log('Service Worker registrado com sucesso:', registration.scope);
+        const swUrl = IS_GITHUB_PAGES && REPO_NAME ? 
+            `/${REPO_NAME}/service-worker.js` : 
+            './service-worker.js';
+        
+        navigator.serviceWorker.register(swUrl)
+            .then(registration => {
+                console.log('✅ Service Worker registrado:', registration.scope);
+                
+                // Verificar atualizações
+                registration.addEventListener('updatefound', () => {
+                    const newWorker = registration.installing;
+                    console.log('🔄 Nova versão do Service Worker encontrada');
                     
-                    // Verificar se há uma nova versão do service worker
-                    registration.addEventListener('updatefound', () => {
-                        const newWorker = registration.installing;
-                        console.log('Nova versão do Service Worker encontrada:', newWorker);
-                        
-                        newWorker.addEventListener('statechange', () => {
-                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                console.log('Nova versão do Service Worker instalada. Recarregue para atualizar.');
-                            }
-                        });
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            showNotification('🔄 Nova versão disponível! Recarregue para atualizar.', 'info');
+                        }
                     });
-                })
-                .catch(error => {
-                    console.log('Falha ao registrar Service Worker:', error);
                 });
-        });
+            })
+            .catch(error => {
+                console.error('❌ Falha ao registrar Service Worker:', error);
+                
+                // Se falhar, tenta registrar sem caminho específico
+                if (IS_GITHUB_PAGES) {
+                    navigator.serviceWorker.register('/service-worker.js')
+                        .then(reg => console.log('✅ Service Worker registrado (fallback):', reg.scope))
+                        .catch(err => console.error('❌ Falha no fallback também:', err));
+                }
+            });
     } else {
-        console.log('Service Worker não suportado neste navegador');
+        console.log('❌ Service Worker não suportado');
+        showNotification('Seu navegador não suporta todas as funcionalidades do app', 'error');
     }
 }
 
 // Verificar se o app já está instalado
 function isAppInstalled() {
-    return window.matchMedia('(display-mode: standalone)').matches || 
+    return window.matchMedia('(display-mode: standalone)').matches ||
            window.navigator.standalone === true ||
            document.referrer.includes('android-app://');
 }
 
 // Manipular prompt de instalação
 function handleBeforeInstallPrompt(e) {
-    console.log('Evento beforeinstallprompt disparado');
+    console.log('🎯 Evento beforeinstallprompt disparado');
     
-    // Prevenir que o prompt apareça automaticamente
     e.preventDefault();
-    
-    // Armazenar o evento para usar depois
     deferredPrompt = e;
     
-    // Verificar se já está instalado
-    if (isAppInstalled()) {
-        console.log('App já instalado, escondendo botão');
-        installButton.style.display = 'none';
-        return;
+    // Só mostra o botão se não for iOS (iOS não tem beforeinstallprompt)
+    if (!isiOS()) {
+        installButton.style.display = 'block';
+        installButton.textContent = '📲 Instalar App';
     }
-    
-    // Mostrar botão de instalação
-    console.log('Mostrando botão de instalação');
-    installButton.style.display = 'block';
     
     // Adicionar listener para quando o app for instalado
     window.addEventListener('appinstalled', () => {
-        console.log('App instalado com sucesso via beforeinstallprompt');
+        console.log('🎉 App instalado via beforeinstallprompt');
         deferredPrompt = null;
         installButton.style.display = 'none';
+        showNotification('🎉 Diário de Bordo instalado com sucesso!', 'success');
     });
 }
 
 // Instalar PWA
 async function installPWA() {
-    console.log('Tentando instalar PWA...');
-    
-    if (!deferredPrompt) {
-        console.log('Nenhum prompt de instalação disponível, mostrando instruções manuais');
+    // No iOS, não temos beforeinstallprompt, então mostramos instruções
+    if (isiOS()) {
         showInstallInstructions();
         return;
     }
     
-    try {
-        // Mostrar prompt de instalação
-        console.log('Mostrando prompt de instalação');
-        deferredPrompt.prompt();
-        
-        // Aguardar resposta do usuário
-        const choiceResult = await deferredPrompt.userChoice;
-        
-        if (choiceResult.outcome === 'accepted') {
-            console.log('Usuário aceitou a instalação');
-            showNotification('Diário de Bordo instalado com sucesso! 🎉');
-            installButton.style.display = 'none';
-        } else {
-            console.log('Usuário recusou a instalação');
-            showNotification('Instalação cancelada. Você pode instalar depois clicando no botão "Instalar App".', 'info');
+    // No Android/Desktop com beforeinstallprompt
+    if (deferredPrompt) {
+        try {
+            deferredPrompt.prompt();
+            const choiceResult = await deferredPrompt.userChoice;
+            
+            if (choiceResult.outcome === 'accepted') {
+                console.log('✅ Usuário aceitou instalação');
+                installButton.style.display = 'none';
+            } else {
+                console.log('❌ Usuário recusou instalação');
+                showNotification('Instalação cancelada. Você pode instalar depois pelo menu do navegador.', 'info');
+            }
+            
+            deferredPrompt = null;
+        } catch (error) {
+            console.error('❌ Erro durante instalação:', error);
+            showInstallInstructions();
         }
-        
-        deferredPrompt = null;
-    } catch (error) {
-        console.error('Erro ao instalar PWA:', error);
-        showNotification('Não foi possível instalar o aplicativo. Tente novamente mais tarde.', 'error');
+    } else {
+        // Se não tem deferredPrompt, mostra instruções
         showInstallInstructions();
     }
 }
 
-// Mostrar instruções de instalação manuais
+// Mostrar instruções de instalação
 function showInstallInstructions() {
-    const userAgent = navigator.userAgent.toLowerCase();
     let instructions = '';
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     
-    if (/android/.test(userAgent)) {
+    if (isAndroid()) {
         instructions = `
-            <h3>📱 Como instalar no Android:</h3>
+            <h3>📱 Instalar no Android</h3>
             <ol>
-                <li>Toque no menu (três pontos) no canto superior direito do Chrome</li>
+                <li>Toque no <strong>menu (⋯)</strong> no canto superior direito</li>
                 <li>Selecione <strong>"Adicionar à tela inicial"</strong></li>
-                <li>Toque em <strong>"Adicionar"</strong> para confirmar</li>
-                <li>O aplicativo aparecerá na sua tela inicial</li>
+                <li>Toque em <strong>"Adicionar"</strong></li>
+                <li>Pronto! O app aparecerá na sua tela inicial</li>
             </ol>
             <div class="tip">
-                💡 Dica: Alguns dispositivos Android podem mostrar "Instalar aplicativo" em vez de "Adicionar à tela inicial".
+                💡 Dica: Use o <strong>Chrome</strong> para melhor experiência.
             </div>
         `;
-    } else if (/iphone|ipad|ipod/.test(userAgent)) {
+    } else if (isiOS()) {
         instructions = `
-            <h3>📱 Como instalar no iOS (iPhone/iPad):</h3>
+            <h3>📱 Instalar no iPhone/iPad</h3>
             <ol>
-                <li>Toque no ícone de compartilhar <strong>(📤)</strong> na parte inferior do Safari</li>
+                <li>Abra no <strong>Safari</strong> (não funciona no Chrome iOS)</li>
+                <li>Toque no ícone de <strong>compartilhar (□↑)</strong></li>
                 <li>Role para baixo e toque em <strong>"Adicionar à Tela de Início"</strong></li>
                 <li>Toque em <strong>"Adicionar"</strong> no canto superior direito</li>
-                <li>O aplicativo aparecerá na sua tela inicial</li>
+                <li>O app aparecerá na sua tela inicial</li>
             </ol>
             <div class="tip">
-                💡 Dica: Use o Safari, pois outros navegadores no iOS podem não suportar instalação de PWA.
+                💡 Dica: <strong>Só funciona no Safari</strong>. Não use Chrome ou outros navegadores no iOS.
             </div>
         `;
-    } else if (/chrome/.test(userAgent)) {
+    } else if (isMobile) {
         instructions = `
-            <h3>💻 Como instalar no Chrome Desktop:</h3>
-            <div class="browser-section">
-                <h4>Método 1: Barra de endereço</h4>
-                <div class="steps">
-                    <div class="step">
-                        <strong>Passo 1:</strong> Procure o ícone de instalação na barra de endereço:
-                        <div class="icon-demo">https://seusite.com <span class="install-icon">⊡</span></div>
-                    </div>
-                    <div class="step">
-                        <strong>Passo 2:</strong> Clique no ícone <span class="install-icon">⊡</span>
-                    </div>
-                    <div class="step">
-                        <strong>Passo 3:</strong> Clique em <strong>"Instalar"</strong>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="browser-section">
-                <h4>Método 2: Menu do Chrome</h4>
-                <div class="steps">
-                    <div class="step">
-                        <strong>Passo 1:</strong> Clique no menu (três pontos) no canto superior direito
-                    </div>
-                    <div class="step">
-                        <strong>Passo 2:</strong> Vá em <strong>"Mais ferramentas"</strong>
-                    </div>
-                    <div class="step">
-                        <strong>Passo 3:</strong> Selecione <strong>"Criar atalho..."</strong>
-                    </div>
-                    <div class="step">
-                        <strong>Passo 4:</strong> Marque <strong>"Abrir como janela"</strong> e clique em <strong>"Criar"</strong>
-                    </div>
-                </div>
-            </div>
-            
+            <h3>📱 Instalar no Celular</h3>
+            <p>Procure no menu do seu navegador por:</p>
+            <ul>
+                <li><strong>"Adicionar à tela inicial"</strong> (Android)</li>
+                <li><strong>"Instalar aplicativo"</strong></li>
+                <li>Ou no menu de compartilhamento</li>
+            </ul>
             <div class="tip">
-                💡 Dica: Após instalar, o aplicativo aparecerá no menu Iniciar do Windows e poderá ser executado como um programa normal.
-            </div>
-        `;
-    } else if (/firefox/.test(userAgent)) {
-        instructions = `
-            <h3>🦊 Como instalar no Firefox:</h3>
-            <div class="browser-section">
-                <h4>Método 1: Barra de endereço</h4>
-                <div class="steps">
-                    <div class="step">
-                        <strong>Passo 1:</strong> Procure o ícone <strong>"+"</strong> ou <strong>"Instalar"</strong> na barra de endereço
-                    </div>
-                    <div class="step">
-                        <strong>Passo 2:</strong> Clique no ícone e selecione <strong>"Instalar"</strong>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="browser-section">
-                <h4>Método 2: Menu do Firefox</h4>
-                <div class="steps">
-                    <div class="step">
-                        <strong>Passo 1:</strong> Clique no menu (três linhas) no canto superior direito
-                    </div>
-                    <div class="step">
-                        <strong>Passo 2:</strong> Selecione <strong>"Instalar Diário de Bordo"</strong>
-                    </div>
-                </div>
-            </div>
-        `;
-    } else if (/edg/.test(userAgent)) {
-        instructions = `
-            <h3>🌐 Como instalar no Microsoft Edge:</h3>
-            <div class="steps">
-                <div class="step">
-                    <strong>Passo 1:</strong> Clique no ícone de instalação na barra de endereço ou menu (três pontos)
-                </div>
-                <div class="step">
-                    <strong>Passo 2:</strong> Selecione <strong>"Instalar"</strong> ou <strong>"Instalar este site como um aplicativo"</strong>
-                </div>
-                <div class="step">
-                    <strong>Passo 3:</strong> Confirme a instalação
-                </div>
+                💡 Use <strong>Chrome no Android</strong> ou <strong>Safari no iOS</strong> para melhor compatibilidade.
             </div>
         `;
     } else {
         instructions = `
-            <h3>🌍 Instruções gerais para instalação:</h3>
-            <p>Para instalar este aplicativo como PWA (Aplicativo Web Progressivo):</p>
-            <ul>
-                <li>Procure na barra de endereço do seu navegador por um ícone de instalação (geralmente <span class="install-icon">⊡</span> ou <strong>+</strong>)</li>
-                <li>Ou verifique no menu do navegador a opção <strong>"Instalar"</strong>, <strong>"Adicionar à tela inicial"</strong> ou similar</li>
-                <li>Em dispositivos móveis, use o menu de compartilhamento</li>
-            </ul>
+            <h3>💻 Instalar no Computador</h3>
+            
+            <div class="browser-section">
+                <h4>Google Chrome / Microsoft Edge:</h4>
+                <div class="steps">
+                    <div class="step">
+                        1. Clique no ícone <span class="install-icon">⊡</span> na barra de endereço
+                    </div>
+                    <div class="step">
+                        2. Ou vá em <strong>Menu → Mais ferramentas → Criar atalho...</strong>
+                    </div>
+                    <div class="step">
+                        3. Marque <strong>"Abrir como janela"</strong> e clique em Criar
+                    </div>
+                </div>
+            </div>
+            
             <div class="tip">
-                💡 Dica: O aplicativo funciona 100% offline após instalado e pode ser usado como um app nativo.
+                💡 Após instalar, o app aparecerá no Menu Iniciar (Windows) ou Launchpad (Mac).
             </div>
         `;
     }
     
     installInstructions.innerHTML = instructions;
     installModal.style.display = 'flex';
-}
-
-// Debug do PWA (útil para desenvolvedores)
-function debugPWA() {
-    console.log('=== DEBUG DO PWA ===');
-    console.log('URL atual:', window.location.href);
-    console.log('Protocolo:', window.location.protocol);
-    console.log('Deferred prompt disponível:', !!deferredPrompt);
-    console.log('App instalado:', isAppInstalled());
-    console.log('Display mode:', window.matchMedia('(display-mode: standalone)').matches);
-    console.log('Standalone (iOS):', window.navigator.standalone);
-    console.log('Service Worker suportado:', 'serviceWorker' in navigator);
-    console.log('Online:', navigator.onLine);
     
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistration()
-            .then(reg => {
-                console.log('Service Worker registrado:', !!reg);
-                if (reg) {
-                    console.log('Scope:', reg.scope);
-                    reg.update();
-                }
-            })
-            .catch(err => console.error('Erro ao verificar Service Worker:', err));
-    }
+    // Focar no modal para acessibilidade
+    setTimeout(() => installModal.querySelector('.modal-content').focus(), 100);
 }
 
-// Verificar periodicamente se há mudanças no status de instalação
-setInterval(() => {
-    if (isAppInstalled() && installButton.style.display !== 'none') {
-        console.log('App foi instalado, escondendo botão');
-        installButton.style.display = 'none';
-    }
-}, 3000);
+// Funções auxiliares de detecção
+function isiOS() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+
+function isAndroid() {
+    return /Android/.test(navigator.userAgent);
+}
+
+function getDeviceType() {
+    if (isiOS()) return 'iOS';
+    if (isAndroid()) return 'Android';
+    if (/Windows/.test(navigator.userAgent)) return 'Windows';
+    if (/Mac/.test(navigator.userAgent)) return 'Mac';
+    return 'Outro';
+}
 
 // Evento quando o app é instalado
 window.addEventListener('appinstalled', () => {
-    console.log('Diário de Bordo foi instalado com sucesso!');
+    console.log('🎉 Diário de Bordo instalado!');
     installButton.style.display = 'none';
-    showNotification('Diário de Bordo instalado! Agora você pode usá-lo como um aplicativo nativo.', 'success');
+    
+    // Salvar no analytics/localStorage
+    localStorage.setItem('pwaInstalled', 'true');
+    localStorage.setItem('pwaInstallDate', new Date().toISOString());
 });
 
-// Expor função de debug globalmente (para testes)
-window.debugPWA = debugPWA;
+// Verificar periodicamente se o app foi instalado
+setInterval(() => {
+    if (isAppInstalled() && installButton.style.display !== 'none') {
+        installButton.style.display = 'none';
+        console.log('🔍 App detectado como instalado, escondendo botão');
+    }
+}, 5000);
 
-// Adicionar botão de debug temporário (remova em produção)
-const debugBtn = document.createElement('button');
-debugBtn.textContent = 'Debug';
-debugBtn.style.position = 'fixed';
-debugBtn.style.bottom = '60px';
-debugBtn.style.right = '10px';
-debugBtn.style.zIndex = '9999';
-debugBtn.style.padding = '5px 10px';
-debugBtn.style.fontSize = '10px';
-debugBtn.style.backgroundColor = '#666';
-debugBtn.style.color = 'white';
-debugBtn.style.border = 'none';
-debugBtn.style.borderRadius = '3px';
-debugBtn.onclick = debugPWA;
-document.body.appendChild(debugBtn);
+// Adicionar CSS para animações
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes slideIn {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+`;
+document.head.appendChild(style);
+
+// Expor funções para debug (remover em produção)
+window.debugApp = () => {
+    console.log('=== DEBUG DO APP ===');
+    console.log('URL:', window.location.href);
+    console.log('GitHub Pages:', IS_GITHUB_PAGES);
+    console.log('Repo:', REPO_NAME);
+    console.log('Service Worker:', 'serviceWorker' in navigator);
+    console.log('Instalado:', isAppInstalled());
+    console.log('Display Mode:', window.matchMedia('(display-mode: standalone)').matches);
+    console.log('Deferred Prompt:', !!deferredPrompt);
+    console.log('Device:', getDeviceType());
+    console.log='==============';
+};

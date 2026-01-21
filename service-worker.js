@@ -1,220 +1,231 @@
-// Nome do cache (mude a versão quando atualizar)
-const CACHE_NAME = 'diario-de-bordo-v1.2';
+// Nome do cache (atualize a versão quando fizer mudanças)
+const CACHE_NAME = 'diario-bordo-v2.0';
+const APP_NAME = 'Diário de Bordo';
 
-// Arquivos para cache (app shell) - IMPORTANTE: usar ./ para GitHub Pages
-const urlsToCache = [
-  './',
-  './index.html',
-  './style.css',
-  './script.js',
-  './manifest.json',
-  './icons/icon-72x72.png',
-  './icons/icon-96x96.png',
-  './icons/icon-128x128.png',
-  './icons/icon-144x144.png',
-  './icons/icon-152x152.png',
-  './icons/icon-192x192.png',
-  './icons/icon-384x384.png',
-  './icons/icon-512x512.png'
+// Arquivos ESSENCIAIS para cache (sem caminhos relativos complexos)
+const CORE_ASSETS = [
+  '/',  // IMPORTANTE: raiz do site
+  'index.html',
+  'style.css',
+  'script.js',
+  'manifest.json'
 ];
 
-// Instalar Service Worker
+// Ícones (adicione conforme disponível)
+const ICON_ASSETS = [
+  'icons/icon-72x72.png',
+  'icons/icon-96x96.png',
+  'icons/icon-128x128.png',
+  'icons/icon-144x144.png',
+  'icons/icon-152x152.png',
+  'icons/icon-192x192.png',
+  'icons/icon-384x384.png',
+  'icons/icon-512x512.png'
+];
+
+// Instalação do Service Worker
 self.addEventListener('install', event => {
-  console.log('[Service Worker] Instalando...', CACHE_NAME);
+  console.log(`[${APP_NAME}] Service Worker instalando...`);
   
-  // Forçar ativação imediata
+  // Força a ativação imediata
   self.skipWaiting();
   
-  // Cachear arquivos importantes
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('[Service Worker] Cacheando arquivos do app shell');
-        return cache.addAll(urlsToCache)
+        console.log(`[${APP_NAME}] Cache aberto: ${CACHE_NAME}`);
+        
+        // Cache apenas os arquivos principais primeiro
+        return cache.addAll(CORE_ASSETS)
           .then(() => {
-            console.log('[Service Worker] Todos os recursos foram cacheados');
+            console.log(`[${APP_NAME}] Arquivos principais cacheados`);
+            
+            // Tenta cachear ícones, mas não falha se não conseguir
+            return Promise.all(
+              ICON_ASSETS.map(icon => {
+                return cache.add(icon).catch(err => {
+                  console.warn(`[${APP_NAME}] Não foi possível cachear ${icon}:`, err);
+                  return Promise.resolve();
+                });
+              })
+            );
           })
-          .catch(error => {
-            console.error('[Service Worker] Erro ao cachear arquivos:', error);
+          .then(() => {
+            console.log(`[${APP_NAME}] Instalação completa`);
           });
+      })
+      .catch(error => {
+        console.error(`[${APP_NAME}] Erro durante instalação:`, error);
       })
   );
 });
 
-// Ativar Service Worker
+// Ativação do Service Worker
 self.addEventListener('activate', event => {
-  console.log('[Service Worker] Ativando...');
+  console.log(`[${APP_NAME}] Service Worker ativando...`);
   
-  // Limpar caches antigos
   event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('[Service Worker] Removendo cache antigo:', cacheName);
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    }).then(() => {
-      console.log('[Service Worker] Ativação concluída');
-      // Tomar controle de todas as páginas abertas
-      return self.clients.claim();
+    Promise.all([
+      // Limpa caches antigos
+      caches.keys().then(cacheNames => {
+        return Promise.all(
+          cacheNames.map(cacheName => {
+            if (cacheName !== CACHE_NAME) {
+              console.log(`[${APP_NAME}] Removendo cache antigo: ${cacheName}`);
+              return caches.delete(cacheName);
+            }
+          })
+        );
+      }),
+      
+      // Toma controle de todas as páginas abertas
+      self.clients.claim()
+    ])
+    .then(() => {
+      console.log(`[${APP_NAME}] Ativação completa. Pronto para funcionar offline!`);
     })
   );
 });
 
-// Interceptar requisições (estratégia: Cache First, depois Network)
+// Estratégia de cache: Network First com fallback para Cache
 self.addEventListener('fetch', event => {
-  // Ignorar requisições que não são GET
-  if (event.request.method !== 'GET') return;
+  // Não interceptar requisições de dados ou de outras origens
+  if (
+    event.request.method !== 'GET' ||
+    !event.request.url.startsWith(self.location.origin)
+  ) {
+    return;
+  }
   
-  // Ignorar requisições do chrome-extension
-  if (event.request.url.includes('chrome-extension://')) return;
-  
-  // Para requisições de mesma origem
-  if (event.request.url.startsWith(self.location.origin)) {
+  // Para arquivos HTML, CSS, JS e JSON: Cache First, depois Network
+  if (
+    event.request.url.match(/\.(html|css|js|json)$/) ||
+    event.request.headers.get('accept')?.includes('text/html')
+  ) {
     event.respondWith(
       caches.match(event.request)
         .then(cachedResponse => {
-          // Se encontrou no cache, retornar
+          // Se tem no cache, retorna (mesmo que esteja desatualizado)
           if (cachedResponse) {
-            console.log('[Service Worker] Servindo do cache:', event.request.url);
+            // Atualiza o cache em segundo plano
+            fetchAndCache(event.request);
             return cachedResponse;
           }
           
-          // Se não encontrou, buscar na rede
-          return fetch(event.request)
-            .then(response => {
-              // Verificar se a resposta é válida
-              if (!response || response.status !== 200 || response.type !== 'basic') {
-                return response;
-              }
-              
-              // Clonar a resposta para salvar no cache
-              const responseToCache = response.clone();
-              
-              caches.open(CACHE_NAME)
-                .then(cache => {
-                  cache.put(event.request, responseToCache);
-                  console.log('[Service Worker] Cacheando nova resposta:', event.request.url);
-                });
-              
-              return response;
-            })
-            .catch(error => {
-              console.error('[Service Worker] Erro ao buscar:', error);
-              
-              // Se for uma página HTML, retornar a página offline
-              if (event.request.headers.get('accept').includes('text/html')) {
-                return caches.match('./index.html');
-              }
-              
-              // Para outros tipos de arquivo, pode retornar um fallback
-              if (event.request.url.match(/\.(css|js)$/)) {
-                return new Response('/* Offline */', {
-                  headers: { 'Content-Type': 'text/css' }
-                });
-              }
-              
-              return new Response('Offline', {
-                status: 503,
-                statusText: 'Service Unavailable',
-                headers: new Headers({
-                  'Content-Type': 'text/plain'
-                })
-              });
-            });
+          // Se não tem no cache, busca na rede
+          return fetchAndCache(event.request);
+        })
+        .catch(() => {
+          // Fallback para página offline se disponível
+          if (event.request.url.match(/\.html$/)) {
+            return caches.match('index.html');
+          }
+          
+          // Fallback genérico
+          return new Response('Offline - Diário de Bordo', {
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+          });
         })
     );
+    return;
   }
+  
+  // Para outros recursos (imagens, etc): Cache First
+  event.respondWith(
+    caches.match(event.request)
+      .then(cachedResponse => {
+        return cachedResponse || fetch(event.request);
+      })
+  );
 });
 
-// Sincronização em segundo plano (quando conexão retorna)
-self.addEventListener('sync', event => {
-  console.log('[Service Worker] Sincronização em segundo plano:', event.tag);
-  
-  if (event.tag === 'sync-entries') {
-    event.waitUntil(syncEntries());
-  }
-});
-
-// Receber mensagens da página
-self.addEventListener('message', event => {
-  console.log('[Service Worker] Mensagem recebida:', event.data);
-  
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-  
-  if (event.data && event.data.type === 'CACHE_URLS') {
-    event.waitUntil(
+// Função auxiliar para buscar e cachear
+function fetchAndCache(request) {
+  return fetch(request)
+    .then(response => {
+      // Verifica se a resposta é válida
+      if (!response || response.status !== 200 || response.type !== 'basic') {
+        return response;
+      }
+      
+      // Clona a resposta para cachear
+      const responseToCache = response.clone();
+      
       caches.open(CACHE_NAME)
         .then(cache => {
-          return cache.addAll(event.data.urls);
+          cache.put(request, responseToCache);
+          console.log(`[${APP_NAME}] Recurso cacheado: ${request.url}`);
         })
-    );
+        .catch(err => {
+          console.warn(`[${APP_NAME}] Não foi possível cachear ${request.url}:`, err);
+        });
+      
+      return response;
+    })
+    .catch(error => {
+      console.error(`[${APP_NAME}] Erro ao buscar ${request.url}:`, error);
+      throw error;
+    });
+}
+
+// Sincronização em background
+self.addEventListener('sync', event => {
+  if (event.tag === 'sync-data') {
+    console.log(`[${APP_NAME}] Sincronizando dados em background...`);
+    event.waitUntil(syncPendingData());
   }
 });
 
-// Função para sincronizar dados (exemplo para expansão futura)
-function syncEntries() {
-  // Esta função pode ser expandida para sincronizar com um servidor
-  // quando o usuário voltar a ficar online
-  console.log('[Service Worker] Sincronizando entradas...');
-  
-  // Por enquanto, apenas log
-  return Promise.resolve('Sincronização concluída');
-}
-
-// Push notifications (para expansão futura)
+// Notificações push (para futura implementação)
 self.addEventListener('push', event => {
-  console.log('[Service Worker] Push notification recebida:', event);
-  
   const options = {
-    body: event.data ? event.data.text() : 'Nova notificação do Diário de Bordo',
-    icon: './icons/icon-192x192.png',
-    badge: './icons/icon-72x72.png',
-    vibrate: [200, 100, 200],
+    body: event.data?.text() || 'Novo lembrete do Diário de Bordo',
+    icon: 'icons/icon-192x192.png',
+    badge: 'icons/icon-72x72.png',
+    vibrate: [100, 50, 100],
     data: {
-      dateOfArrival: Date.now(),
-      primaryKey: 1
-    },
-    actions: [
-      {
-        action: 'open',
-        title: 'Abrir Diário'
-      },
-      {
-        action: 'close',
-        title: 'Fechar'
-      }
-    ]
+      url: self.location.origin
+    }
   };
   
   event.waitUntil(
-    self.registration.showNotification('Diário de Bordo', options)
+    self.registration.showNotification(APP_NAME, options)
   );
 });
 
 // Clique em notificação
 self.addEventListener('notificationclick', event => {
-  console.log('[Service Worker] Notificação clicada:', event.notification.tag);
   event.notification.close();
   
   event.waitUntil(
-    clients.matchAll({
-      type: 'window'
-    })
-    .then(clientList => {
-      for (const client of clientList) {
-        if (client.url === './' && 'focus' in client) {
-          return client.focus();
+    clients.matchAll({ type: 'window' })
+      .then(windowClients => {
+        // Foca em uma janela existente se houver
+        for (const client of windowClients) {
+          if (client.url === self.location.origin && 'focus' in client) {
+            return client.focus();
+          }
         }
-      }
-      if (clients.openWindow) {
-        return clients.openWindow('./');
-      }
-    })
+        
+        // Abre uma nova janela se não houver
+        if (clients.openWindow) {
+          return clients.openWindow(self.location.origin);
+        }
+      })
   );
 });
+
+// Recebe mensagens da página
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// Função de sincronização (exemplo)
+function syncPendingData() {
+  // Aqui você implementaria a sincronização com servidor
+  // Por enquanto, apenas registra no console
+  console.log(`[${APP_NAME}] Dados sincronizados com sucesso`);
+  return Promise.resolve();
+}

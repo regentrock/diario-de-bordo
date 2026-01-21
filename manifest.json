@@ -1,36 +1,53 @@
 {
   "name": "Diário de Bordo",
   "short_name": "Diário",
-  "description": "Aplicativo para registro de atividades diárias - Funciona offline",
-  "start_url": "./index.html",
-  "scope": "./",
+  "description": "Registro de atividades diárias - Funciona offline",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "theme_color": "#4a6fa5",
   "background_color": "#f5f7fa",
   "orientation": "portrait",
+  "categories": ["productivity", "utilities"],
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "id": "/",
   "icons": [
     {
-      "src": "./icons/icon-1.png",
+      "src": "icons/icon-1.png",
       "sizes": "72x72",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/png"
     },
     {
-      "src": "./icons/icon-2.png",
+      "src": "icons/icon-2.png",
       "sizes": "96x96",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/png"
     }
   ],
   "screenshots": [
     {
-      "src": "./screenshots/screenshot1.png",
-      "sizes": "1280x720",
+      "src": "screenshots/screenshot1.png",
+      "sizes": "1280x800",
       "type": "image/png",
-      "form_factor": "wide"
+      "form_factor": "wide",
+      "label": "Desktop view"
     }
   ],
-  "categories": ["productivity", "utilities"],
-  "lang": "pt-BR",
-  "dir": "ltr"
+  "shortcuts": [
+    {
+      "name": "Nova entrada",
+      "short_name": "Novo",
+      "description": "Adicionar nova entrada",
+      "url": "/?new=true",
+      "icons": [{ "src": "icons/icon-1.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Ver todas",
+      "short_name": "Todas",
+      "description": "Ver todas as entradas",
+      "url": "/?view=all",
+      "icons": [{ "src": "icons/icon-2.png", "sizes": "96x96" }]
+    }
+  ]
 }

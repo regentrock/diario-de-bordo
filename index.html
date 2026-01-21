@@ -7,23 +7,25 @@
     
     <meta name="theme-color" content="#4a6fa5">
     <meta name="description" content="Aplicativo para registro de atividades diárias">
-    <link rel="manifest" href="./manifest.json">
+    <meta name="mobile-web-app-capable" content="yes">
     
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <meta name="apple-mobile-web-app-title" content="Diário de Bordo">
-    <link rel="stylesheet" href="./style.css">
-    <link rel="icon" href="./icons/icon-1.png" type="image/png">
-    <link rel="apple-touch-icon" href="./icons/icon-2.png">
+    <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+    <link rel="manifest" href="manifest.json" crossorigin="use-credentials">
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/png" href="icons/icon-512x512.png">
+    <link rel="shortcut icon" href="icons/icon-512x512.png">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Diário de Bordo</h1>
+            <h1>📖 Diário de Bordo</h1>
             <p class="subtitle">Registre suas atividades diárias</p>
             
             <button id="installButton" class="install-btn" aria-label="Instalar aplicativo">
-                Instalar App
+                📲 Instalar App
             </button>
             
             <div class="status-indicator">
@@ -80,6 +82,7 @@
         <footer>
             <p>Diário de Bordo - PWA</p>
             <p class="footer-info">Funciona offline | Dados salvos localmente</p>
+            <p class="github-info" id="githubInfo"></p>
         </footer>
     </div>
 
@@ -92,6 +95,6 @@
         </div>
     </div>
     
-    <script src="./script.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>

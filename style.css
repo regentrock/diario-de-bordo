@@ -488,3 +488,41 @@ footer {
         width: 95%;
     }
 }
+
+/* Info GitHub Pages */
+.github-info {
+    font-size: 0.8em;
+    color: #666;
+    margin-top: 5px;
+    font-family: monospace;
+}
+
+/* Melhorias para mobile */
+@media (max-width: 767px) {
+    .install-btn {
+        font-size: 14px;
+        padding: 8px 16px;
+    }
+    
+    .status-indicator {
+        font-size: 12px;
+        padding: 3px 8px;
+    }
+    
+    .modal-content {
+        margin: 10px;
+        padding: 15px;
+    }
+}
+
+/* Melhor scroll no mobile */
+.entries-list {
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Prevenir zoom no input em iOS */
+@media screen and (max-width: 767px) {
+    input, textarea {
+        font-size: 16px; /* Previne zoom no iOS */
+    }
+}
