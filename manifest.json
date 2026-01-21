@@ -1,24 +1,33 @@
 {
   "name": "Diário de Bordo",
   "short_name": "Diário",
-  "description": "Aplicativo para registro de atividades diárias",
-  "start_url": "/",
+  "description": "Aplicativo para registro de atividades diárias - Funciona offline",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "theme_color": "#4a6fa5",
   "background_color": "#f5f7fa",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "icons/icon-1.png",
-      "sizes": "192x192",
+      "src": "./icons/icon-1.png",
+      "sizes": "72x72",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icons/icon-2.png",
-      "sizes": "512x512",
+      "src": "./icons/icon-2.png",
+      "sizes": "96x96",
       "type": "image/png",
       "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "./screenshots/screenshot1.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
     }
   ],
   "categories": ["productivity", "utilities"],

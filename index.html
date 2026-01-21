@@ -7,24 +7,25 @@
     
     <meta name="theme-color" content="#4a6fa5">
     <meta name="description" content="Aplicativo para registro de atividades diárias">
-    <link rel="manifest" href="manifest.json">
+    <link rel="manifest" href="./manifest.json">
     
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <meta name="apple-mobile-web-app-title" content="Diário de Bordo">
-    
-    <link rel="stylesheet" href="style.css">
-    <link rel="icon" href="icons/icon-1.png" type="image/png">
-    <link rel="apple-touch-icon" href="icons/icon-2.png">
+    <link rel="stylesheet" href="./style.css">
+    <link rel="icon" href="./icons/icon-1.png" type="image/png">
+    <link rel="apple-touch-icon" href="./icons/icon-2.png">
 </head>
 <body>
     <div class="container">
         <header>
             <h1>Diário de Bordo</h1>
             <p class="subtitle">Registre suas atividades diárias</p>
+            
             <button id="installButton" class="install-btn" aria-label="Instalar aplicativo">
                 Instalar App
             </button>
+            
             <div class="status-indicator">
                 <span id="statusText">Online</span>
                 <div id="statusDot" class="status-dot online"></div>
@@ -56,16 +57,20 @@
             
             <section class="entries-section">
                 <h2>Entradas Registradas</h2>
+                
                 <div class="filters">
                     <label for="filterDate">Filtrar por data:</label>
                     <input type="date" id="filterDate">
                     <button id="clearFilter" class="btn btn-secondary">Limpar Filtro</button>
                 </div>
+                
                 <div id="emptyState" class="empty-state">
                     <p>Nenhuma entrada registrada ainda.</p>
                     <p>Comece adicionando sua primeira atividade!</p>
                 </div>
+                
                 <div id="entriesList" class="entries-list"></div>
+                
                 <div class="stats">
                     <p>Total de entradas: <span id="totalEntries">0</span></p>
                 </div>
@@ -77,6 +82,16 @@
             <p class="footer-info">Funciona offline | Dados salvos localmente</p>
         </footer>
     </div>
-    <script src="script.js"></script>
+
+    <div id="installModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2>Instalar Diário de Bordo</h2>
+            <div id="installInstructions" class="instructions"></div>
+            <p><small>O aplicativo funciona offline e pode ser instalado como um app nativo.</small></p>
+        </div>
+    </div>
+    
+    <script src="./script.js"></script>
 </body>
 </html>
